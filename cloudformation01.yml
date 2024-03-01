@@ -1,0 +1,334 @@
+AWSTemplateFormatVersion: 2010-09-09 
+Parameters:
+  InstanceTypeParameter: 
+    Type: String 
+    Default: t2.small
+    Description: Enter instance size. 
+  WorkstationIp:
+    Type: String
+    Description: The IP address of the workstation that can SSH into the instance. 
+  AMI:
+    Type: String
+    Default: ami-052c9ea013e6e3567                        
+    Description: Amazon Linux 2023 AMI
+  Key:
+    Type: String
+    Description: The key used to access the instance. 
+    Default: ec2-key
+                                  
+Resources: 
+  VPC:                                                   
+    Type: AWS::EC2::VPC 
+    Properties:
+      CidrBlock: 216.0.0.0/16                             
+      EnableDnsSupport: true 
+      EnableDnsHostnames: true 
+      InstanceTenancy: default 
+      Tags:
+        - Key: Name 
+          Value: ProjectVPC
+  InternetGateway:                                         
+    Type: AWS::EC2::InternetGateway 
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment 
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  Subnet1:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: us-west-2a
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.10.0/24 
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name 
+          Value: Pub01Subnet
+  Subnet2:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: us-west-2a                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.20.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: Web01Subnet
+  Subnet3:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: us-west-2a                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.30.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: Was01Subnet
+  Subnet4:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: us-west-2a                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.40.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: DB01Subnet
+  Subnet5:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: us-west-2b                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.110.0/24 
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name 
+          Value: Pub02Subnet
+  Subnet6:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: us-west-2b                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.120.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: Web02Subnet
+  Subnet7:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: us-west-2b                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.130.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: Was02Subnet
+  Subnet8:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: us-west-2b                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.140.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: DB02Subnet
+  RouteTableA:
+    Type: AWS::EC2::RouteTable 
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name 
+          Value: Public-RT
+  RouteTableB:
+    Type: AWS::EC2::RouteTable 
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name 
+          Value: Private-RT
+  InternetRoute:
+    Type: AWS::EC2::Route 
+    DependsOn: InternetGateway 
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0 
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTableA
+  NATGateway:
+   Type: AWS::EC2::NatGateway
+   Properties:
+      AllocationId: !GetAtt ElasticIP.AllocationId
+      SubnetId: !Ref Subnet5
+      Tags:
+      - Key: Name
+        Value: Project-NGW
+  RouteNATGateway:
+    DependsOn: NATGateway
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NATGateway
+  SubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableA
+      SubnetId: !Ref Subnet1
+  SubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableA
+      SubnetId: !Ref Subnet5
+  SubnetRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      SubnetId: !Ref Subnet3
+  SubnetRouteTableAssociation4:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      SubnetId: !Ref Subnet7
+  SubnetRouteTableAssociation5:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      SubnetId: !Ref Subnet2
+  SubnetRouteTableAssociation6:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      SubnetId: !Ref Subnet6
+  PublicSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "Public-SG"
+      GroupDescription: "SSH traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '22' 
+          ToPort: '22' 
+          CidrIp: 0.0.0.0/0          
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Public-bastion-SG
+  WebSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "Webserver-SG"
+      GroupDescription: "SSH and web traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '22' 
+          ToPort: '22' 
+          SourceSecurityGroupId: PublicSG
+        - IpProtocol: tcp
+          FromPort: '80' 
+          ToPort: '80' 
+          SourceSecurityGroupId: InALBSG
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Web-SG
+  InALBSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "Internal-ALB-SG"
+      GroupDescription: "Mariadb traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '80' 
+          ToPort: '80' 
+          SourceSecurityGroupId: WebSG     
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Internal-ALB-SG
+        
+  ElasticIP:
+    Type: AWS::EC2::EIP 
+    Properties:
+      Domain: VPC
+
+  Linux1:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet1
+      ImageId: !Ref AMI 
+      InstanceType:
+        Ref: InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds:
+        - Ref: PublicSG 
+      Tags:
+        -
+          Key: Appplication 
+          Value: Linux Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: Pub-01-Bastion
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Support Test Instance 
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          # hostnamectl set-hostname pub01.example.com
+          # bash
+
+  Linux2:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet3
+      ImageId: !Ref AMI 
+      InstanceType:
+        Ref: InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds:
+        - Ref: WebSG 
+      Tags:
+        -
+          Key: Appplication 
+          Value: Linux Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: Pub-01-Bastion
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Support Test Instance 
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          # hostnamectl set-hostname web01.example.com
+          # bash
+          # dnf install -y httpd
+
