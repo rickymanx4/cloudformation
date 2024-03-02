@@ -581,16 +581,16 @@ Resources:
           sudo bash
           sudo dnf install -y httpd
           sudo systemctl enable --now httpd
-  DbSubnetGroup:
+  DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
       DBSubnetGroupDescription: RDS DB subnet group
       SubnetIds:
-      - Ref: Subnet4
-      - Ref: Subnet8  
+      - !Ref Subnet4
+      - !Ref Subnet8
       Tags:
       - Key: Name
-        Value: DatabaseSubnet      
+        Value: DatabaseSubnet            
   MasterDB:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -610,4 +610,15 @@ Resources:
       VPCSecurityGroups: 
       - !Ref DBSG
       PubliclyAccessible: false   
+  ReplicaDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      SourceDBInstanceIdentifier: !Ref 'MasterDB'
+      Tags:
+      - Key: Name
+        Value: Read Replica Database  
+      
+          
+
+      
 
