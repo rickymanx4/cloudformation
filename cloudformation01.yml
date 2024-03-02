@@ -15,7 +15,64 @@ Parameters:
     Type: String
     Description: The key used to access the instance. 
     Default: ec2-key
-                                  
+  DBInstanceID:
+    Default: mydbinstance
+    Description: My database instance
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: >-
+      Must begin with a letter and must not end with a hyphen or contain two
+      consecutive hyphens.
+  DBName:
+    Default: masterdb
+    Description: My database
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
+  DBInstanceClass:
+    Default: db.m5.large
+    Description: DB instance class
+    Type: String
+    ConstraintDescription: Must select a valid DB instance type.
+  DBAllocatedStorage:
+    Default: '50'
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '20'
+    MaxValue: '65536'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password MySQL database access
+    Type: String
+    MinLength: '6'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.                                  
+  EnableReadReplica:
+    Description: Enable the ReadReplica
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    ConstraintDescription: must be true or false. 
+  MultiAZ:
+    Description: Multi-AZ master database
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    ConstraintDescription: must be true or false.  
 Resources: 
   VPC:                                                   
     Type: AWS::EC2::VPC 
@@ -67,7 +124,7 @@ Resources:
   Subnet4:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: us-west-2a                     
+      AvailabilityZone: us-west-2a 
       VpcId: !Ref VPC
       CidrBlock: 216.0.40.0/24 
       MapPublicIpOnLaunch: false
@@ -107,7 +164,7 @@ Resources:
   Subnet8:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: us-west-2b                     
+      AvailabilityZone: us-west-2b         
       VpcId: !Ref VPC
       CidrBlock: 216.0.140.0/24 
       MapPublicIpOnLaunch: false
@@ -340,7 +397,6 @@ Resources:
           #!/bin/bash
           sudo hostnamectl set-hostname pub01.example.com
           sudo bash
-
   Linux2:
     Type: 'AWS::EC2::Instance' 
     Properties:
@@ -525,5 +581,33 @@ Resources:
           sudo bash
           sudo dnf install -y httpd
           sudo systemctl enable --now httpd
-
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS DB subnet group
+      SubnetIds:
+      - Ref: Subnet4
+      - Ref: Subnet8  
+      Tags:
+      - Key: Name
+        Value: DatabaseSubnet      
+  MasterDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref 'DBName'
+      AllocatedStorage: !Ref 'DBAllocatedStorage'
+      DBInstanceClass: !Ref 'DBInstanceClass'
+      Engine: MariaDB
+      EngineVersion: "10.11.6" 
+      MasterUsername: !Ref 'DBUsername'
+      MasterUserPassword: !Ref 'DBPassword'
+      MultiAZ: !Ref 'MultiAZ'
+      Tags:
+      - Key: Name
+        Value: Master Database
+      StorageType: Standard
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: 
+      - !Ref DBSG
+      PubliclyAccessible: false   
 
