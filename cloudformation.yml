@@ -14,7 +14,65 @@ Parameters:
   Key:
     Type: String
     Description: The key used to access the instance. 
-    Default: ec2-key                                     
+    Default: ec2-key
+  DBInstanceID:
+    Default: mydbinstance
+    Description: My database instance
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: >-
+      Must begin with a letter and must not end with a hyphen or contain two
+      consecutive hyphens.
+  DBName:
+    Default: masterdb
+    Description: My database
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
+  DBInstanceClass:
+    Default: db.m5.large
+    Description: DB instance class
+    Type: String
+    ConstraintDescription: Must select a valid DB instance type.
+  DBAllocatedStorage:
+    Default: '50'
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '20'
+    MaxValue: '65536'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password MySQL database access
+    Type: String
+    MinLength: '6'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.                                  
+  EnableReadReplica:
+    Description: Enable the ReadReplica
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    ConstraintDescription: must be true or false. 
+  MultiAZ:
+    Description: Multi-AZ master database
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    ConstraintDescription: must be true or false.  
 Resources: 
   VPC:                                                   
     Type: AWS::EC2::VPC 
@@ -66,7 +124,7 @@ Resources:
   Subnet4:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: us-west-2a                     
+      AvailabilityZone: us-west-2a 
       VpcId: !Ref VPC
       CidrBlock: 216.0.40.0/24 
       MapPublicIpOnLaunch: false
@@ -106,7 +164,7 @@ Resources:
   Subnet8:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: us-west-2b                     
+      AvailabilityZone: us-west-2b         
       VpcId: !Ref VPC
       CidrBlock: 216.0.140.0/24 
       MapPublicIpOnLaunch: false
@@ -168,7 +226,7 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation 
     Properties:
       RouteTableId: !Ref RouteTableB
-      SubnetId: !Ref Subnet4
+      SubnetId: !Ref Subnet7
   SubnetRouteTableAssociation5:
     Type: AWS::EC2::SubnetRouteTableAssociation 
     Properties:
@@ -179,22 +237,377 @@ Resources:
     Properties:
       RouteTableId: !Ref RouteTableB
       SubnetId: !Ref Subnet6
-  InstanceSecurityGroup:
+  PublicSG:
     Type: AWS::EC2::SecurityGroup 
     Properties:
-      GroupName: "Internet Group"
+      GroupName: "PublicSG"
+      GroupDescription: "SSH traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '22' 
+          ToPort: '22' 
+          CidrIp: 0.0.0.0/0          
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Public-bastion-SG
+  WebSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "WebSG"
       GroupDescription: "SSH and web traffic in, all traffic out." 
       VpcId: !Ref VPC
       SecurityGroupIngress: 
         - IpProtocol: tcp
           FromPort: '22' 
           ToPort: '22' 
-          CidrIp:  14.52.0.0/16                       
+          SourceSecurityGroupId: !Ref PublicSG
+        - IpProtocol: tcp
+          FromPort: '80' 
+          ToPort: '80' 
+          CidrIp: 0.0.0.0/0 
       SecurityGroupEgress: 
         - IpProtocol: -1
-          CidrIp: 0.0.0.0/0 
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Web-SG
+  InALBSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "InALBSG"
+      GroupDescription: "Mariadb traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '80' 
+          ToPort: '80' 
+          SourceSecurityGroupId: !Ref WebSG
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Internal-ALB-SG
+  WasSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "WASSG"
+      GroupDescription: "SSH and web traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '22' 
+          ToPort: '22' 
+          SourceSecurityGroupId: !Ref  PublicSG
+        - IpProtocol: tcp
+          FromPort: '80' 
+          ToPort: '80' 
+          SourceSecurityGroupId: !Ref  InALBSG
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Was-SG
+  DBSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "DBSG"
+      GroupDescription: "Mariadb traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '3306' 
+          ToPort: '3306' 
+          SourceSecurityGroupId: !Ref  WasSG     
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: DB-SG
+  ExALBSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "ExALBSG"
+      GroupDescription: "Mariadb traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '80' 
+          ToPort: '80' 
+          CidrIp: 0.0.0.0/0     
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: External-ALB-SG
+        
   ElasticIP:
     Type: AWS::EC2::EIP 
     Properties:
       Domain: VPC
 
+  Linux1:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet1
+      ImageId: !Ref AMI 
+      InstanceType:
+        Ref: InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds: 
+        - Ref: PublicSG 
+      Tags:
+        -
+          Key: Appplication 
+          Value: Linux Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: Pub-01-Bastion
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Support Test Instance 
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          sudo hostnamectl set-hostname pub01.example.com
+          sudo bash
+  Linux2:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet2
+      ImageId: !Ref AMI 
+      InstanceType:
+        Ref: InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds:
+        - Ref: WebSG 
+      Tags:
+        -
+          Key: Appplication 
+          Value: Apache Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: Web-01-Server
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Wep APP server
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          sudo hostnamectl set-hostname web01.example.com
+          sudo bash
+          sudo dnf install -y httpd
+          sudo systemctl enable --now httpd
+  Linux3:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet3
+      ImageId: !Ref AMI 
+      InstanceType:
+        Ref: InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds:
+        - Ref: WasSG 
+      Tags:
+        -
+          Key: Appplication 
+          Value: Tomcat Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: Was-01-Server
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Wep APP server
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          sudo hostnamectl set-hostname was01.example.com
+          sudo bash
+          sudo dnf install -y httpd
+          sudo systemctl enable --now httpd
+  Linux4:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet6
+      ImageId: !Ref AMI 
+      InstanceType:
+        Ref: InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds:
+        - Ref: WebSG 
+      Tags:
+        -
+          Key: Appplication 
+          Value: Apache Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: Web-02-Server
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Wep APP server
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          sudo hostnamectl set-hostname web02.example.com
+          sudo bash
+          sudo dnf install -y httpd
+          sudo systemctl enable --now httpd
+  Linux5:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet7
+      ImageId: !Ref AMI 
+      InstanceType:
+        Ref: InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds:
+        - Ref: WasSG 
+      Tags:
+        -
+          Key: Appplication 
+          Value: Tomcat Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: Was-02-Server
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Was APP server
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          sudo hostnamectl set-hostname was02.example.com
+          sudo bash
+          sudo dnf install -y httpd
+          sudo systemctl enable --now httpd
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS DB subnet group
+      SubnetIds:
+      - !Ref Subnet4
+      - !Ref Subnet8
+      Tags:
+      - Key: Name
+        Value: DatabaseSubnet            
+  MasterDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref 'DBName'
+      AllocatedStorage: !Ref 'DBAllocatedStorage'
+      DBInstanceClass: !Ref 'DBInstanceClass'
+      Engine: MariaDB
+      EngineVersion: "10.11.6" 
+      MasterUsername: !Ref 'DBUsername'
+      MasterUserPassword: !Ref 'DBPassword'
+      MultiAZ: !Ref 'MultiAZ'
+      Tags:
+      - Key: Name
+        Value: Master Database
+      StorageType: Standard
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: 
+      - !Ref DBSG
+      PubliclyAccessible: false   
+  ReplicaDB:
