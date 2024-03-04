@@ -15,6 +15,64 @@ Parameters:
     Type: String
     Description: The key used to access the instance. 
     Default: ec2-key
+  DBInstanceID:
+    Default: mydbinstance
+    Description: My database instance
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: >-
+      Must begin with a letter and must not end with a hyphen or contain two
+      consecutive hyphens.
+  DBName:
+    Default: masterdb
+    Description: My database
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
+  DBInstanceClass:
+    Default: db.m5.large
+    Description: DB instance class
+    Type: String
+    ConstraintDescription: Must select a valid DB instance type.
+  DBAllocatedStorage:
+    Default: '50'
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '20'
+    MaxValue: '65536'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password MySQL database access
+    Type: String
+    MinLength: '6'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.                                  
+  EnableReadReplica:
+    Description: Enable the ReadReplica
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    ConstraintDescription: must be true or false. 
+  MultiAZ:
+    Description: Multi-AZ master database
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    ConstraintDescription: must be true or false.
   
 Resources: 
   VPC:                                                   
@@ -226,9 +284,9 @@ Resources:
       VpcId: !Ref VPC
       SecurityGroupIngress: 
         - IpProtocol: tcp
-          FromPort: '80' 
-          ToPort: '80' 
-          SourceSecurityGroupId: !Ref WebSG
+          FromPort: '8080' 
+          ToPort: '8080' 
+          SourceSecurityGroupId: !Ref PublicSG
       SecurityGroupEgress: 
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -277,17 +335,13 @@ Resources:
     Type: AWS::EC2::SecurityGroup 
     Properties:
       GroupName: "ExALBSG"
-      GroupDescription: "Mariadb traffic in, all traffic out." 
+      GroupDescription: "Web traffic in, all traffic out." 
       VpcId: !Ref VPC
       SecurityGroupIngress: 
         - IpProtocol: tcp
           FromPort: '80' 
           ToPort: '80' 
-          CidrIp: 0.0.0.0/0            
-        - IpProtocol: tcp
-          FromPort: '22' 
-          ToPort: '22' 
-          SourceSecurityGroupId: !Ref PublicSG         
+          CidrIp: 0.0.0.0/0                    
       SecurityGroupEgress: 
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -343,7 +397,10 @@ Resources:
           #!/bin/bash
           sudo hostnamectl set-hostname pub01.example.com
           sudo bash
-  LC1:
+          sudo dnf install -y httpd
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/proxy.conf /etc/httpd/conf.d/
+          sudo systemctl enable --now httpd          
+  LC:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
       ImageId: ami-052c9ea013e6e3567  
@@ -352,30 +409,15 @@ Resources:
       KeyName: !Ref Key
       LaunchConfigurationName: webserverLC1
       SecurityGroups:
-        - !Ref EXALBSG
+        - !Ref WebSG
       UserData:
         Fn::Base64: |
           #cloud-boothook
           #!/bin/bash
-          sudo dnf install -y httpd
+          sudo dnf install -y httpd php tomcat
           sudo systemctl enable --now httpd
-          echo 'hello wolrd' > /var/www/html/index.html       
-  LC2:
-    Type: AWS::AutoScaling::LaunchConfiguration
-    Properties:
-      ImageId: ami-052c9ea013e6e3567  
-      InstanceType: t2.small
-      InstanceMonitoring: true
-      KeyName: !Ref Key
-      LaunchConfigurationName: wasserverLC1
-      SecurityGroups:
-        - !Ref INALBSG
-      UserData:
-        Fn::Base64: |
-          #cloud-boothook
-          #!/bin/bash
-          sudo dnf install -y mariadb105
-          sudo systemctl enable --now mariadb105 mariadb105-server
+          sudo systemctl enable --now php
+          echo 'hello world' > /var/www/html/index.html       
   EXALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -421,7 +463,7 @@ Resources:
         - !Ref Subnet2
         - !Ref Subnet6
       Cooldown: 100
-      LaunchConfigurationName: !Ref LC1
+      LaunchConfigurationName: !Ref LC
       MaxSize: 6
       MinSize: 2
       DesiredCapacity: 2
@@ -458,7 +500,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       Name: InternalTarget
-      Port: 3306
+      Port: 8080
       Protocol: HTTP
       HealthCheckEnabled: true
       HealthCheckIntervalSeconds: 10
@@ -475,7 +517,7 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref INTargetGroup   
       LoadBalancerArn: !Ref INALB
-      Port: 3306
+      Port: 8080
       Protocol: HTTP
 
   INASG:
@@ -486,7 +528,7 @@ Resources:
         - !Ref Subnet3
         - !Ref Subnet7
       Cooldown: 100
-      LaunchConfigurationName: !Ref LC2
+      LaunchConfigurationName: !Ref LC
       MaxSize: 6
       MinSize: 2
       DesiredCapacity: 2
@@ -506,7 +548,42 @@ Resources:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
         TargetValue: 70      
-                    
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS DB subnet group
+      SubnetIds:
+      - !Ref Subnet4
+      - !Ref Subnet8
+      Tags:
+      - Key: Name
+        Value: DatabaseSubnet            
+  MasterDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref 'DBName'
+      AllocatedStorage: !Ref 'DBAllocatedStorage'
+      DBInstanceClass: !Ref 'DBInstanceClass'
+      Engine: MariaDB
+      EngineVersion: "10.11.6" 
+      MasterUsername: !Ref 'DBUsername'
+      MasterUserPassword: !Ref 'DBPassword'
+      MultiAZ: !Ref 'MultiAZ'
+      Tags:
+      - Key: Name
+        Value: Master Database
+      StorageType: Standard
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: 
+      - !Ref DBSG
+      PubliclyAccessible: false   
+  ReplicaDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      SourceDBInstanceIdentifier: !Ref 'MasterDB'
+      Tags:
+      - Key: Name
+        Value: Read Replica Database                     
 
       
 
