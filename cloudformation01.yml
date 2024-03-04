@@ -414,7 +414,11 @@ Resources:
         Fn::Base64: |
           #cloud-boothook
           #!/bin/bash
-          sudo dnf install -y httpd php tomcat
+          sudo -i
+          sudo dnf install -y httpd 
+          sudo dnf install -y php 
+          sudo dnf install -y tomcat 
+          sudo dnf install -y stress
           sudo systemctl enable --now httpd
           sudo systemctl enable --now php
           echo 'hello world' > /var/www/html/index.html       
