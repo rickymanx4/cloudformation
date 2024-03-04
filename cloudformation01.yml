@@ -15,65 +15,7 @@ Parameters:
     Type: String
     Description: The key used to access the instance. 
     Default: ec2-key
-  DBInstanceID:
-    Default: mydbinstance
-    Description: My database instance
-    Type: String
-    MinLength: '1'
-    MaxLength: '63'
-    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-    ConstraintDescription: >-
-      Must begin with a letter and must not end with a hyphen or contain two
-      consecutive hyphens.
-  DBName:
-    Default: masterdb
-    Description: My database
-    Type: String
-    MinLength: '1'
-    MaxLength: '64'
-    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
-  DBInstanceClass:
-    Default: db.m5.large
-    Description: DB instance class
-    Type: String
-    ConstraintDescription: Must select a valid DB instance type.
-  DBAllocatedStorage:
-    Default: '50'
-    Description: The size of the database (GiB)
-    Type: Number
-    MinValue: '20'
-    MaxValue: '65536'
-    ConstraintDescription: must be between 20 and 65536 GiB.
-  DBUsername:
-    NoEcho: 'true'
-    Description: Username for MySQL database access
-    Type: String
-    MinLength: '1'
-    MaxLength: '16'
-    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
-  DBPassword:
-    NoEcho: 'true'
-    Description: Password MySQL database access
-    Type: String
-    MinLength: '6'
-    MaxLength: '41'
-    AllowedPattern: '[a-zA-Z0-9]*'
-    ConstraintDescription: must contain only alphanumeric characters.                                  
-  EnableReadReplica:
-    Description: Enable the ReadReplica
-    Type: String
-    Default: 'true'
-    AllowedValues: ['true', 'false']
-    ConstraintDescription: must be true or false. 
-  MultiAZ:
-    Description: Multi-AZ master database
-    Type: String
-    Default: 'true'
-    AllowedValues: ['true', 'false']
-    ConstraintDescription: must be true or false.
-  
+ 
 Resources: 
   VPC:                                                   
     Type: AWS::EC2::VPC 
@@ -269,7 +211,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: '80' 
           ToPort: '80' 
-          CidrIp: 0.0.0.0/0 
+          SourceSecurityGroupId: !Ref EXALBSG
       SecurityGroupEgress: 
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -280,13 +222,13 @@ Resources:
     Type: AWS::EC2::SecurityGroup 
     Properties:
       GroupName: "INALBSG"
-      GroupDescription: "Mariadb traffic in, all traffic out." 
+      GroupDescription: "tomcat traffic in, all traffic out." 
       VpcId: !Ref VPC
       SecurityGroupIngress: 
         - IpProtocol: tcp
           FromPort: '8080' 
           ToPort: '8080' 
-          SourceSecurityGroupId: !Ref PublicSG
+          SourceSecurityGroupId: !Ref WebSG
       SecurityGroupEgress: 
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -305,8 +247,8 @@ Resources:
           ToPort: '22' 
           SourceSecurityGroupId: !Ref  PublicSG
         - IpProtocol: tcp
-          FromPort: '80' 
-          ToPort: '80' 
+          FromPort: '8080' 
+          ToPort: '8080' 
           SourceSecurityGroupId: !Ref  INALBSG
       SecurityGroupEgress: 
         - IpProtocol: -1
@@ -353,6 +295,41 @@ Resources:
     Type: AWS::EC2::EIP 
     Properties:
       Domain: VPC
+  EC2IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ec2-instance-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+  RolePolicies:
+    Type: AWS::IAM::Policy
+    DependsOn:
+      - Linux1
+    Properties:
+      PolicyName: InstancePolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 's3:*'
+            Resource: '*'
+      Roles:
+        - !Ref EC2IAMRole
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      InstanceProfileName: InstanceProfile
+      Path: "/"
+      Roles: 
+        - !Ref EC2IAMRole         
   Linux1:
     Type: 'AWS::EC2::Instance' 
     Properties:
@@ -363,6 +340,7 @@ Resources:
       KeyName: !Ref Key
       SecurityGroupIds: 
         - Ref: PublicSG 
+      IamInstanceProfile: !Ref InstanceProfile        
       Tags:
         -
           Key: Appplication 
@@ -378,7 +356,7 @@ Resources:
           Value: Transient
         -
           Key: Name
-          Value: Pub-01-Bastion
+          Value: Bastion-Host
         -
           Key: OS 
           Value: Linux
@@ -398,30 +376,49 @@ Resources:
           sudo hostnamectl set-hostname pub01.example.com
           sudo bash
           sudo dnf install -y httpd
-          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/proxy.conf /etc/httpd/conf.d/
-          sudo systemctl enable --now httpd          
-  LC:
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/data/proxy.conf /etc/httpd/conf.d/        
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/data/ec2-key.pem /root/
+          sudo systemctl enable --now httpd
+          sudo chmod 600 /root/ec2-key.pem          
+  LCWeb:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
       ImageId: ami-052c9ea013e6e3567  
       InstanceType: t2.small
       InstanceMonitoring: true
       KeyName: !Ref Key
-      LaunchConfigurationName: webserverLC1
+      LaunchConfigurationName: webserverLC
       SecurityGroups:
         - !Ref WebSG
       UserData:
         Fn::Base64: |
           #cloud-boothook
           #!/bin/bash
-          sudo -i
+          sudo dnf install -y httpd           
+          sudo dnf install -y stress
+          sudo systemctl enable --now httpd
+          echo 'hello world' > /var/www/html/index.html
+  LCWas:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-052c9ea013e6e3567  
+      InstanceType: t2.small
+      InstanceMonitoring: true
+      KeyName: !Ref Key
+      LaunchConfigurationName: wasserverLC
+      SecurityGroups:
+        - !Ref WasSG
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
           sudo dnf install -y httpd 
           sudo dnf install -y php 
-          sudo dnf install -y tomcat 
+          sudo dnf install -y tomcat9 
           sudo dnf install -y stress
           sudo systemctl enable --now httpd
           sudo systemctl enable --now php
-          echo 'hello world' > /var/www/html/index.html       
+          sudo systemctl enable --now tomcat9
   EXALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -443,7 +440,7 @@ Resources:
       Protocol: HTTP
       HealthCheckEnabled: true
       HealthCheckIntervalSeconds: 10
-      HealthCheckPath: /index.html
+      HealthCheckPath: /
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 5
@@ -467,7 +464,7 @@ Resources:
         - !Ref Subnet2
         - !Ref Subnet6
       Cooldown: 100
-      LaunchConfigurationName: !Ref LC
+      LaunchConfigurationName: !Ref LCWeb
       MaxSize: 6
       MinSize: 2
       DesiredCapacity: 2
@@ -475,7 +472,7 @@ Resources:
         - !Ref EXTargetGroup
       Tags:
         - Key: Name
-          Value: web-asg
+          Value: Web-asg
           PropagateAtLaunch: true
 
   EXASGPolicy:
@@ -486,7 +483,7 @@ Resources:
       TargetTrackingConfiguration:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
-        TargetValue: 70      
+        TargetValue: 30      
   INALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -508,7 +505,7 @@ Resources:
       Protocol: HTTP
       HealthCheckEnabled: true
       HealthCheckIntervalSeconds: 10
-      HealthCheckPath: /*
+      HealthCheckPath: /
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 5
@@ -532,7 +529,7 @@ Resources:
         - !Ref Subnet3
         - !Ref Subnet7
       Cooldown: 100
-      LaunchConfigurationName: !Ref LC
+      LaunchConfigurationName: !Ref LCWas
       MaxSize: 6
       MinSize: 2
       DesiredCapacity: 2
@@ -540,7 +537,7 @@ Resources:
         - !Ref INTargetGroup
       Tags:
         - Key: Name
-          Value: was-asg
+          Value: Was-asg
           PropagateAtLaunch: true
 
   INASGPolicy:
@@ -551,43 +548,7 @@ Resources:
       TargetTrackingConfiguration:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
-        TargetValue: 70      
-  DBSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupDescription: RDS DB subnet group
-      SubnetIds:
-      - !Ref Subnet4
-      - !Ref Subnet8
-      Tags:
-      - Key: Name
-        Value: DatabaseSubnet            
-  MasterDB:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBName: !Ref 'DBName'
-      AllocatedStorage: !Ref 'DBAllocatedStorage'
-      DBInstanceClass: !Ref 'DBInstanceClass'
-      Engine: MariaDB
-      EngineVersion: "10.11.6" 
-      MasterUsername: !Ref 'DBUsername'
-      MasterUserPassword: !Ref 'DBPassword'
-      MultiAZ: !Ref 'MultiAZ'
-      Tags:
-      - Key: Name
-        Value: Master Database
-      StorageType: Standard
-      DBSubnetGroupName: !Ref DBSubnetGroup
-      VPCSecurityGroups: 
-      - !Ref DBSG
-      PubliclyAccessible: false   
-  ReplicaDB:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      SourceDBInstanceIdentifier: !Ref 'MasterDB'
-      Tags:
-      - Key: Name
-        Value: Read Replica Database                     
+        TargetValue: 30      
 
       
 
