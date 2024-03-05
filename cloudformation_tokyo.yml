@@ -1,0 +1,693 @@
+AWSTemplateFormatVersion: 2010-09-09 
+Parameters:
+  InstanceTypeParameter: 
+    Type: String 
+    Default: t2.small
+    Description: Enter instance size. 
+  WorkstationIp:
+    Type: String
+    Description: The IP address of the workstation that can SSH into the instance. 
+  AMI:
+    Type: String
+    Default: ami-052c9ea013e6e3567                        
+    Description: Amazon Linux 2023 AMI
+  Key:
+    Type: String
+    Description: The key used to access the instance. 
+    Default: project-key
+  DBInstanceID:
+    Default: mydbinstance
+    Description: My database instance
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: >-
+      Must begin with a letter and must not end with a hyphen or contain two
+      consecutive hyphens.
+  DBName:
+    Default: masterdb
+    Description: My database
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
+  DBInstanceClass:
+    Default: db.m5.large
+    Description: DB instance class
+    Type: String
+    ConstraintDescription: Must select a valid DB instance type.
+  DBAllocatedStorage:
+    Default: '50'
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '20'
+    MaxValue: '65536'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password MySQL database access
+    Type: String
+    MinLength: '6'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.                                  
+  EnableReadReplica:
+    Description: Enable the ReadReplica
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    ConstraintDescription: must be true or false. 
+  MultiAZ:
+    Description: Multi-AZ master database
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    ConstraintDescription: must be true or false.
+  
+Resources: 
+  VPC:                                                   
+    Type: AWS::EC2::VPC 
+    Properties:
+      CidrBlock: 216.0.0.0/16                             
+      EnableDnsSupport: true 
+      EnableDnsHostnames: true 
+      InstanceTenancy: default 
+      Tags:
+        - Key: Name 
+          Value: ProjectVPC
+  InternetGateway:                                         
+    Type: AWS::EC2::InternetGateway 
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment 
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  Subnet1:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: ap-northeast-1a
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.10.0/24 
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name 
+          Value: Pub01Subnet
+  Subnet2:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: ap-northeast-1a                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.20.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: Web01Subnet
+  Subnet3:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: ap-northeast-1a                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.30.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: Was01Subnet
+  Subnet4:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: ap-northeast-1a 
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.40.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: DB01Subnet
+  Subnet5:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: ap-northeast-1b                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.110.0/24 
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name 
+          Value: Pub02Subnet
+  Subnet6:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: ap-northeast-1b                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.120.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: Web02Subnet
+  Subnet7:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: ap-northeast-1b                     
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.130.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: Was02Subnet
+  Subnet8:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: ap-northeast-1b         
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.140.0/24 
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name 
+          Value: DB02Subnet
+  RouteTableA:
+    Type: AWS::EC2::RouteTable 
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name 
+          Value: Public-RT
+  RouteTableB:
+    Type: AWS::EC2::RouteTable 
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name 
+          Value: Private-RT
+  InternetRoute:
+    Type: AWS::EC2::Route 
+    DependsOn: InternetGateway 
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0 
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTableA
+  NATGateway:
+   Type: AWS::EC2::NatGateway
+   Properties:
+      AllocationId: !GetAtt ElasticIP.AllocationId
+      SubnetId: !Ref Subnet5
+      Tags:
+      - Key: Name
+        Value: Project-NGW
+  RouteNATGateway:
+    DependsOn: NATGateway
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NATGateway
+  SubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableA
+      SubnetId: !Ref Subnet1
+  SubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableA
+      SubnetId: !Ref Subnet5
+  SubnetRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      SubnetId: !Ref Subnet3
+  SubnetRouteTableAssociation4:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      SubnetId: !Ref Subnet7
+  SubnetRouteTableAssociation5:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      SubnetId: !Ref Subnet2
+  SubnetRouteTableAssociation6:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableB
+      SubnetId: !Ref Subnet6
+  PublicSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "PublicSG"
+      GroupDescription: "SSH traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '22' 
+          ToPort: '22' 
+          CidrIp: 0.0.0.0/0          
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Public-bastion-SG
+  WebSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "WebSG"
+      GroupDescription: "SSH and web traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '22' 
+          ToPort: '22' 
+          SourceSecurityGroupId: !Ref PublicSG
+        - IpProtocol: tcp
+          FromPort: '80' 
+          ToPort: '80' 
+          SourceSecurityGroupId: !Ref ExALBSG
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Web-SG
+  InNLBSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "InNLBSG"
+      GroupDescription: "tomcat traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '8009' 
+          ToPort: '8009' 
+          SourceSecurityGroupId: !Ref WebSG
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Internal-ALB-SG
+  WasSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "WASSG"
+      GroupDescription: "SSH and web traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '22' 
+          ToPort: '22' 
+          SourceSecurityGroupId: !Ref  PublicSG
+        - IpProtocol: tcp
+          FromPort: '8009' 
+          ToPort: '8009' 
+          SourceSecurityGroupId: !Ref  InNLBSG
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Was-SG
+  DBSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "DBSG"
+      GroupDescription: "Mariadb traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '3306' 
+          ToPort: '3306' 
+          SourceSecurityGroupId: !Ref  WasSG     
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: DB-SG
+  ExALBSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "ExALBSG"
+      GroupDescription: "Web traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '80' 
+          ToPort: '80' 
+          CidrIp: 0.0.0.0/0                    
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: External-ALB-SG
+        
+  ElasticIP:
+    Type: AWS::EC2::EIP 
+    Properties:
+      Domain: VPC
+  EC2IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ec2-instance-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+  RolePolicies:
+    Type: AWS::IAM::Policy
+    DependsOn:
+      - Linux1
+    Properties:
+      PolicyName: InstancePolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 's3:*'
+            Resource: '*'
+      Roles:
+        - !Ref EC2IAMRole
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      InstanceProfileName: InstanceProfile
+      Path: "/"
+      Roles: 
+        - !Ref EC2IAMRole         
+  Linux1:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet1
+      ImageId: !Ref AMI 
+      InstanceType: !Ref InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds: 
+        - Ref: PublicSG 
+      IamInstanceProfile: !Ref InstanceProfile        
+      Tags:
+        -
+          Key: Appplication 
+          Value: Linux Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: Bastion-Host
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Support Test Instance 
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          sudo hostnamectl set-hostname bastion.example.com
+          sudo bash
+          sudo dnf install -y httpd               
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/data/project-key.pem /root/
+          sudo systemctl enable --now httpd
+          sudo chmod 600 /root/project-key.pem          
+  LTWeb:
+    LaunchTemplate:
+      Type: 'AWS::EC2::LaunchTemplate'
+      Properties:
+        LaunchTemplateName: WebTemplate
+        LaunchTemplateData:
+          IamInstanceProfile: !Ref InstanceProfile
+          KeyName: !Ref Key                               
+          SecurityGroups:
+            - !Ref WebSG                
+        ImageId: ami-09ca9a7f2b499c8cb
+        InstanceType: t2.micro        
+# vim /etc/httpd/conf/workers.properties 에서 ExALB의 ip 주소 변경         
+  ExALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: webserverALB
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref ExALBSG
+      Subnets:
+        - !Ref Subnet1
+        - !Ref Subnet5
+
+  EXTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPC
+      Name: ExternalTarget
+      Port: 80
+      Protocol: HTTP
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+
+  ExALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ExTargetGroup   
+      LoadBalancerArn: !Ref ExALB
+      Port: 80
+      Protocol: HTTP
+
+  ExASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: webserverASG
+      VPCZoneIdentifier:
+        - !Ref Subnet2
+        - !Ref Subnet6
+      Cooldown: 100
+      LaunchConfigurationName: !Ref LTWeb
+      MaxSize: 6
+      MinSize: 2
+      DesiredCapacity: 2
+      TargetGroupARNs:
+        - !Ref ExTargetGroup
+      Tags:
+        - Key: Name
+          Value: Web-asg
+          PropagateAtLaunch: true
+  LTWas:
+    LaunchTemplate:
+      Type: 'AWS::EC2::LaunchTemplate'
+      Properties:
+        LaunchTemplateName: WasTemplate
+        LaunchTemplateData:
+          IamInstanceProfile: !Ref InstanceProfile
+          KeyName: !Ref Key                               
+          SecurityGroups:
+            - !Ref WasSG                
+        ImageId: ami-05c28dc79db6a0e56
+        InstanceType: t2.micro
+        UserData:       
+  InNLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: wasserverNLB
+      Type: network
+      Scheme: internal
+      SecurityGroups:
+        - !Ref InNLBSG
+      Subnets:
+        - !Ref Subnet2
+        - !Ref Subnet6
+
+  INTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPC
+      Name: InternalTarget
+      Port: 8009
+      Protocol: TCP
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+# HealthCheckProtocol은 TCP로 설정이 안되서 수동으로
+  InNLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref INTargetGroup   
+      LoadBalancerArn: !Ref InNLB
+      Port: 8009
+      Protocol: TCP
+
+  INASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: wasserverASG
+      VPCZoneIdentifier:
+        - !Ref Subnet3
+        - !Ref Subnet7
+      Cooldown: 100
+      LaunchConfigurationName: !Ref LTWas
+      MaxSize: 6
+      MinSize: 2
+      DesiredCapacity: 2
+      TargetGroupARNs:
+        - !Ref INTargetGroup
+      Tags:
+        - Key: Name
+          Value: Was-asg
+          PropagateAtLaunch: true
+  CloudFrontDistribution:
+    Type: 'AWS::CloudFront::Distribution'     
+    Properties:
+      DistributionConfig:
+        Comment: 'Cloudfront Distribution pointing ALB Origin'
+        Origins:
+          - DomainName: !GetAtt ExALB.DNSName
+            Id: !Ref ExALB
+            CustomOriginConfig:              
+              HTTPSPort: '443'
+              OriginProtocolPolicy: http-only
+              OriginKeepaliveTimeout: 5
+              OriginReadTimeout: 30
+              OriginSSLProtocols: 
+                - TLSv1.2
+        Enabled: true
+        HttpVersion: 'http2'
+        PriceClass: PriceClass_All
+        DefaultCacheBehavior:        
+          AllowedMethods:
+            - GET
+            - HEAD
+            - DELETE
+            - OPTIONS
+            - PATCH
+            - POST
+            - PUT         
+          ForwardedValues: 
+            Cookies: 
+              Forward: all
+            Headers: 
+              - '*'
+            QueryString: true
+            QueryStringCacheKeys: 
+              - bno                
+          SmoothStreaming: 'false'
+          TargetOriginId: !Ref 'ExALB'
+          ViewerProtocolPolicy: allow-all
+  MySNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: my-sns-topic
+      Subscription:
+        - Endpoint: rickymanx4@naver.com
+          Protocol: email
+  CPUUtilizationAlarmA:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmActions:
+        - Ref: MySNSTopic
+      AlarmName: web-Alarms
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 40
+      TreatMissingData: breaching
+      OKActions: 
+        - Ref: MySNSTopic
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref ExASG
+  CPUUtilizationAlarmB:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmActions:
+        - Ref: MySNSTopic
+      AlarmName: was-Alarms
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 40
+      TreatMissingData: breaching
+      OKActions: 
+        - Ref: MySNSTopic
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref INASG          
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS DB subnet group
+      SubnetIds:
+      - !Ref Subnet4
+      - !Ref Subnet8
+      Tags:
+      - Key: Name
+        Value: DatabaseSubnet            
+  MasterDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref 'DBName'
+      AllocatedStorage: !Ref 'DBAllocatedStorage'
+      DBInstanceClass: !Ref 'DBInstanceClass'
+      Engine: MariaDB
+      EngineVersion: "10.11.6" 
+      MasterUsername: !Ref 'DBUsername'
+      MasterUserPassword: !Ref 'DBPassword'
+      MultiAZ: !Ref 'MultiAZ'
+      Tags:
+      - Key: Name
+        Value: Master Database
+      StorageType: Standard
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: 
+      - !Ref DBSG
+      PubliclyAccessible: false   
+  ReplicaDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      SourceDBInstanceIdentifier: !Ref 'MasterDB'
+      Tags:
+      - Key: Name
+        Value: Read Replica Database 

@@ -573,7 +573,7 @@ Resources:
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 5
       UnhealthyThresholdCount: 2
-# HealthCheckProtocol은 TCP로 설정이 안되서 수동으로 바꿔줘야함
+# HealthCheckProtocol은 TCP로 설정이 안되서 수동으로
   INALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
