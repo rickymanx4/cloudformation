@@ -437,17 +437,16 @@ Resources:
           sudo systemctl enable --now httpd
           sudo chmod 600 /root/project-key.pem          
   LTWeb:
-    LaunchTemplate:
-      Type: 'AWS::EC2::LaunchTemplate'
-      Properties:
-        LaunchTemplateName: WebTemplate
-        LaunchTemplateData:
-          IamInstanceProfile: !Ref InstanceProfile
-          KeyName: !Ref Key                               
-          SecurityGroups:
-            - !Ref WebSG                
-        ImageId: ami-09ca9a7f2b499c8cb
-        InstanceType: t2.micro        
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: WebTemplate
+      LaunchTemplateData:
+        IamInstanceProfile: !Ref InstanceProfile
+        KeyName: !Ref Key                               
+        SecurityGroups:
+          - !Ref WebSG                
+      ImageId: ami-09ca9a7f2b499c8cb
+      InstanceType: t2.micro        
 # vim /etc/httpd/conf/workers.properties 에서 ExALB의 ip 주소 변경         
   ExALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -461,7 +460,7 @@ Resources:
         - !Ref Subnet1
         - !Ref Subnet5
 
-  EXTargetGroup:
+  ExTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       VpcId: !Ref VPC
@@ -505,18 +504,16 @@ Resources:
           Value: Web-asg
           PropagateAtLaunch: true
   LTWas:
-    LaunchTemplate:
-      Type: 'AWS::EC2::LaunchTemplate'
-      Properties:
-        LaunchTemplateName: WasTemplate
-        LaunchTemplateData:
-          IamInstanceProfile: !Ref InstanceProfile
-          KeyName: !Ref Key                               
-          SecurityGroups:
-            - !Ref WasSG                
-        ImageId: ami-05c28dc79db6a0e56
-        InstanceType: t2.micro
-        UserData:       
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: WasTemplate
+      LaunchTemplateData:
+        IamInstanceProfile: !Ref InstanceProfile
+        KeyName: !Ref Key                               
+        SecurityGroups:
+          - !Ref WasSG                
+      ImageId: ami-05c28dc79db6a0e56
+      InstanceType: t2.micro 
   InNLB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
