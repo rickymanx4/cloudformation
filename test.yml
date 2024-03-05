@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: 2010-09-09 
+Parameters:
+  InstanceTypeParameter: 
+    Type: String 
+    Default: t2.small
+    Description: Enter instance size. 
+  WorkstationIp:
+    Type: String
+    Description: The IP address of the workstation that can SSH into the instance. 
+  AMI:
+    Type: String
+    Default: ami-052c9ea013e6e3567                        
+    Description: Amazon Linux 2023 AMI
+  Key:
+    Type: String
+    Description: The key used to access the instance. 
+    Default: ec2-key
+Resources: 
+  VPC:                                                   
+    Type: AWS::EC2::VPC 
+    Properties:
+      CidrBlock: 216.0.0.0/16                             
+      EnableDnsSupport: true 
+      EnableDnsHostnames: true 
+      InstanceTenancy: default 
+      Tags:
+        - Key: Name 
+          Value: ProjectVPC  
+  InternetGateway:                                         
+    Type: AWS::EC2::InternetGateway 
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment 
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  Subnet1:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      AvailabilityZone: us-west-2a
+      VpcId: !Ref VPC
+      CidrBlock: 216.0.10.0/24 
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name 
+          Value: Pub01Subnet
+  RouteTableA:
+    Type: AWS::EC2::RouteTable 
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name 
+          Value: Public-RT
+  InternetRoute:
+    Type: AWS::EC2::Route 
+    DependsOn: InternetGateway 
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0 
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTableA
+  SubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation 
+    Properties:
+      RouteTableId: !Ref RouteTableA
+      SubnetId: !Ref Subnet1  
+  PublicSG:
+    Type: AWS::EC2::SecurityGroup 
+    Properties:
+      GroupName: "PublicSG"
+      GroupDescription: "SSH traffic in, all traffic out." 
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: '22' 
+          ToPort: '22' 
+          CidrIp: 0.0.0.0/0          
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: Public-bastion-SG
+  EC2IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ec2-instance-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+  RolePolicies:
+    Type: AWS::IAM::Policy
+    DependsOn:
+      - Linux1
+    Properties:
+      PolicyName: InstancePolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 's3:*'
+            Resource: '*'
+      Roles:
+        - !Ref EC2IAMRole
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      InstanceProfileName: InstanceProfile
+      Path: "/"
+      Roles: 
+        - !Ref EC2IAMRole     
+  Linux1:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet1
+      ImageId: !Ref AMI 
+      InstanceType: !Ref InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds: 
+        - Ref: PublicSG 
+      IamInstanceProfile: !Ref InstanceProfile        
+      Tags:
+        -
+          Key: Appplication 
+          Value: Linux Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: Webtest
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Support Test Instance 
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          sudo dnf install -y httpd
+          sudo rm -rf /etc/httpd/conf/httpd.conf
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/httpd.conf /etc/httpd/conf/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/workers.properties /etc/httpd/conf/
+          wget https://dlcdn.apache.org/tomcat/tomcat-connectors/jk/tomcat-connectors-1.2.49-src.tar.gz
+          sudo dnf install -y autoconf libtool httpd-devel
+          tar -xvzf tomcat-connectors-1.2.49-src.tar.gz
+          cd tomcat-connectors-1.2.49-src/native
+          sudo ./buildconf.sh
+          sudo ./configure --with-apxs=/usr/bin/apxs
+          make && make install
+          sudo dnf install -y stress
+          sudo systemctl enable --now httpd
+          echo 'hello world' > /var/www/html/index.html  
+  Linux2:
+    Type: 'AWS::EC2::Instance' 
+    Properties:
+      SubnetId: !Ref Subnet1
+      ImageId: !Ref AMI 
+      InstanceType: !Ref InstanceTypeParameter 
+      KeyName: !Ref Key
+      SecurityGroupIds: 
+        - Ref: PublicSG 
+      IamInstanceProfile: !Ref InstanceProfile        
+      Tags:
+        -
+          Key: Appplication 
+          Value: Linux Server
+        -
+          Key: Domain 
+          Value: None
+        -
+          Key: Environment 
+          Value: Test
+        -
+          Key: LifeTime 
+          Value: Transient
+        -
+          Key: Name
+          Value: was-test
+        -
+          Key: OS 
+          Value: Linux
+        -
+          Key: OwnerContact
+          Value: "@matthewcasperson"    
+        -
+          Key: Purpose
+          Value: Support Test Instance 
+        -
+          Key: Source
+          Value: CloudForation Script in Octopus Deploy 
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          sudo dnf install java-1.8* -y
+          wget https://dlcdn.apache.org/tomcat/tomcat-8/v8.5.99/bin/apache-tomcat-8.5.99.tar.gz
+          tar xvfz apache-tomcat-8.5.99.tar.gz
+          sudo mv apache-tomcat-8.5.99 /usr/local/tomcat8.5
+          sudo rm -rf /usr/local/tomcat8.5/webapps/*
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/ROOT.war /usr/local/tomcat8.5/webapps/
+          sudo rm -rf /usr/local/tomcat8.5/conf/server.xml
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/server.xml /usr/local/tomcat8.5/conf/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/tomcat.service /usr/lib/systemd/system/
+          sudo systemctl daemon-reload
+          sudo systemctl enable tomcat
+          sudo systemctl start tomcat            

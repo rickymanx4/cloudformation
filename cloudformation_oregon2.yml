@@ -432,7 +432,7 @@ Resources:
           #!/bin/bash
           sudo hostnamectl set-hostname bastion.example.com
           sudo bash
-          sudo dnf install -y httpd               
+          sudo dnf install -y httpd                       
           sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/data/ec2-key.pem /root/
           sudo systemctl enable --now httpd
           sudo chmod 600 /root/ec2-key.pem          
@@ -448,24 +448,23 @@ Resources:
       SecurityGroups:
         - !Ref WebSG
       UserData:
-        Fn::Base64: |
-          #cloud-boothook
+        Fn::Base64: |          
           #!/bin/bash
           sudo dnf install -y httpd
           sudo rm -rf /etc/httpd/conf/httpd.conf
-          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/httpd.conf /root/etc/httpd/conf/
-          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/workers.properties /root/etc/httpd/conf/
-          sudo wget https://dlcdn.apache.org/tomcat/tomcat-connectors/jk/tomcat-connectors-1.2.49-src.tar.gz
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/httpd.conf /etc/httpd/conf/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/workers.properties /etc/httpd/conf/
+          wget https://dlcdn.apache.org/tomcat/tomcat-connectors/jk/tomcat-connectors-1.2.49-src.tar.gz
           sudo dnf install -y autoconf libtool httpd-devel
-          sudo tar -xvzf tomcat-connectors-1.2.49-src.tar.gz
+          tar -xvzf tomcat-connectors-1.2.49-src.tar.gz
           cd tomcat-connectors-1.2.49-src/native
           sudo ./buildconf.sh
           sudo ./configure --with-apxs=/usr/bin/apxs
-          sudo make && make install
+          make && make install
           sudo dnf install -y stress
           sudo systemctl enable --now httpd
           echo 'hello world' > /var/www/html/index.html        
-# 직접 입력, 특히, /etc/httpd/conf/workers.properties 에 ExALB ip host 작성하기
+# 안되면 userdata 직접 입력, 특히, /etc/httpd/conf/workers.properties 에 ExALB ip host 작성하기
   EXALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -533,22 +532,21 @@ Resources:
       SecurityGroups:
         - !Ref WasSG
       UserData:
-        Fn::Base64: |
-          #cloud-boothook
+        Fn::Base64: |          
           #!/bin/bash
           sudo dnf install java-1.8* -y
           wget https://dlcdn.apache.org/tomcat/tomcat-8/v8.5.99/bin/apache-tomcat-8.5.99.tar.gz
           tar xvfz apache-tomcat-8.5.99.tar.gz
           sudo mv apache-tomcat-8.5.99 /usr/local/tomcat8.5
           sudo rm -rf /usr/local/tomcat8.5/webapps/*
-          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/ROOT.war /root/usr/local/tomcat8.5/webapps/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/ROOT.war /usr/local/tomcat8.5/webapps/
           sudo rm -rf /usr/local/tomcat8.5/conf/server.xml
-          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/server.xml /root/usr/local/tomcat8.5/conf/
-          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/tomcat.service /root/usr/lib/systemd/system/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/server.xml /usr/local/tomcat8.5/conf/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/tomcat.service /usr/lib/systemd/system/
           sudo systemctl daemon-reload
           sudo systemctl enable tomcat
           sudo systemctl start tomcat        
-# 직접 입력
+# 안되면 userdata를 instance에서 직접 입력
   INALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
