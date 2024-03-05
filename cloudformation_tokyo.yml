@@ -353,10 +353,10 @@ Resources:
     Type: AWS::EC2::EIP 
     Properties:
       Domain: VPC
-  EC2IAMRole:
+  EC2IAMRole1:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ec2-instance-role
+      RoleName: s3-instance-role
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -367,12 +367,12 @@ Resources:
             Action:
               - sts:AssumeRole
       Path: /
-  RolePolicies:
+  RolePolicies1:
     Type: AWS::IAM::Policy
     DependsOn:
       - Linux1
     Properties:
-      PolicyName: InstancePolicy
+      PolicyName: InstancePolicy1
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -380,14 +380,14 @@ Resources:
             Action: 's3:*'
             Resource: '*'
       Roles:
-        - !Ref EC2IAMRole
-  InstanceProfile:
+        - !Ref EC2IAMRole1
+  InstanceProfile1:
     Type: AWS::IAM::InstanceProfile
     Properties: 
-      InstanceProfileName: InstanceProfile
+      InstanceProfileName: InstanceProfile1
       Path: "/"
       Roles: 
-        - !Ref EC2IAMRole         
+        - !Ref EC2IAMRole1         
   Linux1:
     Type: 'AWS::EC2::Instance' 
     Properties:
@@ -397,7 +397,7 @@ Resources:
       KeyName: !Ref Key
       SecurityGroupIds: 
         - Ref: PublicSG 
-      IamInstanceProfile: !Ref InstanceProfile        
+      IamInstanceProfile: !Ref InstanceProfile1       
       Tags:
         -
           Key: Appplication 
@@ -441,7 +441,7 @@ Resources:
     Properties:
       LaunchTemplateName: WebTemplate
       LaunchTemplateData:
-        IamInstanceProfile: !Ref InstanceProfile
+        IamInstanceProfile: !Ref InstanceProfile1
         KeyName: !Ref Key                               
         SecurityGroups:
           - !Ref WebSG                
@@ -508,7 +508,7 @@ Resources:
     Properties:
       LaunchTemplateName: WasTemplate
       LaunchTemplateData:
-        IamInstanceProfile: !Ref InstanceProfile
+        IamInstanceProfile: !Ref InstanceProfile1
         KeyName: !Ref Key                               
         SecurityGroups:
           - !Ref WasSG                
