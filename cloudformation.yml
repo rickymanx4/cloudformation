@@ -15,65 +15,6 @@ Parameters:
     Type: String
     Description: The key used to access the instance. 
     Default: ec2-key
-
-  DBInstanceID:
-    Default: mydbinstance
-    Description: My database instance
-    Type: String
-    MinLength: '1'
-    MaxLength: '63'
-    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-    ConstraintDescription: >-
-      Must begin with a letter and must not end with a hyphen or contain two
-      consecutive hyphens.
-  DBName:
-    Default: masterdb
-    Description: My database
-    Type: String
-    MinLength: '1'
-    MaxLength: '64'
-    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
-  DBInstanceClass:
-    Default: db.m5.large
-    Description: DB instance class
-    Type: String
-    ConstraintDescription: Must select a valid DB instance type.
-  DBAllocatedStorage:
-    Default: '50'
-    Description: The size of the database (GiB)
-    Type: Number
-    MinValue: '20'
-    MaxValue: '65536'
-    ConstraintDescription: must be between 20 and 65536 GiB.
-  DBUsername:
-    NoEcho: 'true'
-    Description: Username for MySQL database access
-    Type: String
-    MinLength: '1'
-    MaxLength: '16'
-    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
-  DBPassword:
-    NoEcho: 'true'
-    Description: Password MySQL database access
-    Type: String
-    MinLength: '6'
-    MaxLength: '41'
-    AllowedPattern: '[a-zA-Z0-9]*'
-    ConstraintDescription: must contain only alphanumeric characters.                                  
-  EnableReadReplica:
-    Description: Enable the ReadReplica
-    Type: String
-    Default: 'true'
-    AllowedValues: ['true', 'false']
-    ConstraintDescription: must be true or false. 
-  MultiAZ:
-    Description: Multi-AZ master database
-    Type: String
-    Default: 'true'
-    AllowedValues: ['true', 'false']
-    ConstraintDescription: must be true or false.
  
 Resources: 
   VPC:                                                   
@@ -285,8 +226,8 @@ Resources:
       VpcId: !Ref VPC
       SecurityGroupIngress: 
         - IpProtocol: tcp
-          FromPort: '8080' 
-          ToPort: '8080' 
+          FromPort: '8009' 
+          ToPort: '8009' 
           SourceSecurityGroupId: !Ref WebSG
       SecurityGroupEgress: 
         - IpProtocol: -1
@@ -306,8 +247,8 @@ Resources:
           ToPort: '22' 
           SourceSecurityGroupId: !Ref  PublicSG
         - IpProtocol: tcp
-          FromPort: '8080' 
-          ToPort: '8080' 
+          FromPort: '8009' 
+          ToPort: '8009' 
           SourceSecurityGroupId: !Ref  INALBSG
       SecurityGroupEgress: 
         - IpProtocol: -1
@@ -394,8 +335,7 @@ Resources:
     Properties:
       SubnetId: !Ref Subnet1
       ImageId: !Ref AMI 
-      InstanceType:
-        Ref: InstanceTypeParameter 
+      InstanceType: !Ref InstanceTypeParameter 
       KeyName: !Ref Key
       SecurityGroupIds: 
         - Ref: PublicSG 
@@ -432,7 +372,7 @@ Resources:
         Fn::Base64: |
           #cloud-boothook
           #!/bin/bash
-          sudo hostnamectl set-hostname pub01.example.com
+          sudo hostnamectl set-hostname bastion.example.com
           sudo bash
           sudo dnf install -y httpd
           sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/data/proxy.conf /etc/httpd/conf.d/        
@@ -447,37 +387,27 @@ Resources:
       InstanceMonitoring: true
       KeyName: !Ref Key
       LaunchConfigurationName: webserverLC
+      IamInstanceProfile: !Ref InstanceProfile      
       SecurityGroups:
         - !Ref WebSG
       UserData:
         Fn::Base64: |
           #cloud-boothook
           #!/bin/bash
-          sudo dnf install -y httpd           
+          sudo dnf install -y httpd
+          sudo rm -rf /etc/httpd/conf.d/httpd.conf
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/httpd.conf /etc/httpd/conf/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/workers.properties /etc/httpd/conf/
+          sudo wget https://dlcdn.apache.org/tomcat/tomcat-connectors/jk/tomcat-connectors-1.2.49-src.tar.gz
+          sudo dnf install -y autoconf libtool httpd-devel
+          sudo tar -xvzf tomcat-connectors-1.2.49-src.tar.gz
+          sudo cd tomcat-connectors-1.2.49-src/native
+          sudo ./buildconf.sh
+          sudo ./configure --with-apxs=/usr/bin/apxs
+          sudo make && make install
           sudo dnf install -y stress
           sudo systemctl enable --now httpd
-          echo 'hello world' > /var/www/html/index.html
-  LCWas:
-    Type: AWS::AutoScaling::LaunchConfiguration
-    Properties:
-      ImageId: ami-052c9ea013e6e3567  
-      InstanceType: t2.small
-      InstanceMonitoring: true
-      KeyName: !Ref Key
-      LaunchConfigurationName: wasserverLC
-      SecurityGroups:
-        - !Ref WasSG
-      UserData:
-        Fn::Base64: |
-          #cloud-boothook
-          #!/bin/bash
-          sudo dnf install -y httpd 
-          sudo dnf install -y php 
-          sudo dnf install -y tomcat9 
-          sudo dnf install -y stress
-          sudo systemctl enable --now httpd
-          sudo systemctl enable --now php
-          sudo systemctl enable --now tomcat9
+          echo 'hello world' > /var/www/html/index.html        
   EXALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -487,8 +417,8 @@ Resources:
       SecurityGroups:
         - !Ref EXALBSG
       Subnets:
-        - !Ref Subnet2
-        - !Ref Subnet6
+        - !Ref Subnet1
+        - !Ref Subnet5
 
   EXTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -518,7 +448,7 @@ Resources:
   EXASG:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      AutoScalingGroupName: webserverASG
+      AutoScalingGroupName: webserverASG1
       VPCZoneIdentifier:
         - !Ref Subnet2
         - !Ref Subnet6
@@ -543,25 +473,56 @@ Resources:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
         TargetValue: 30      
+  LCWas:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-052c9ea013e6e3567  
+      InstanceType: t2.small
+      InstanceMonitoring: true
+      KeyName: !Ref Key
+      LaunchConfigurationName: wasserverLC2
+      IamInstanceProfile: !Ref InstanceProfile      
+      SecurityGroups:
+        - !Ref WasSG
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          sudo dnf install java-1.8*
+          sudo wget https://dlcdn.apache.org/tomcat/tomcat-8/v8.5.87/bin/apache-tomcat-8.5.87.tar.gz
+          sudo tar xvfz apache-tomcat-8.5.87.tar.gz
+          sudo mv apache-tomcat-8.5.87 /usr/local/tomcat8.5
+          sudo rm -rf /usr/local/tomcat8.5/webapps/*
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/ROOT.war /usr/local/tomcat8.5/webapps/
+          sudo rm -rf /etc/profile
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/profile /etc/
+          sudo source /etc/profile
+          sudo rm -rf /usr/local/tomcat8.5/conf/server.xml
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/server.xml /usr/local/tomcat8.5/conf/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/tomcat.service /usr/lib/systemd/system/
+          sudo vi /usr/lib/systemd/system/tomcat.service
+          sudo systemctl daemon-reload
+          sudo systemctl enable tomcat
+          sudo systemctl start tomcat        
   INALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: wasserverALB
-      Type: application
+      Type: network
       Scheme: internal
       SecurityGroups:
         - !Ref INALBSG
       Subnets:
-        - !Ref Subnet3
-        - !Ref Subnet7
+        - !Ref Subnet2
+        - !Ref Subnet6
 
   INTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       VpcId: !Ref VPC
       Name: InternalTarget
-      Port: 8080
-      Protocol: HTTP
+      Port: 8009
+      Protocol: TCP
       HealthCheckEnabled: true
       HealthCheckIntervalSeconds: 10
       HealthCheckPath: /
@@ -577,8 +538,8 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref INTargetGroup   
       LoadBalancerArn: !Ref INALB
-      Port: 8080
-      Protocol: HTTP
+      Port: 8009
+      Protocol: TCP
 
   INASG:
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -609,42 +570,43 @@ Resources:
           PredefinedMetricType: ASGAverageCPUUtilization
         TargetValue: 30      
 
-  DBSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
+  CloudFrontDistribution:
+    Type: 'AWS::CloudFront::Distribution'     
     Properties:
-      DBSubnetGroupDescription: RDS DB subnet group
-      SubnetIds:
-      - !Ref Subnet4
-      - !Ref Subnet8
-      Tags:
-      - Key: Name
-        Value: DatabaseSubnet            
-  MasterDB:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBName: !Ref 'DBName'
-      AllocatedStorage: !Ref 'DBAllocatedStorage'
-      DBInstanceClass: !Ref 'DBInstanceClass'
-      Engine: MariaDB
-      EngineVersion: "10.11.6" 
-      MasterUsername: !Ref 'DBUsername'
-      MasterUserPassword: !Ref 'DBPassword'
-      MultiAZ: !Ref 'MultiAZ'
-      Tags:
-      - Key: Name
-        Value: Master Database
-      StorageType: Standard
-      DBSubnetGroupName: !Ref DBSubnetGroup
-      VPCSecurityGroups: 
-      - !Ref DBSG
-      PubliclyAccessible: false   
-  ReplicaDB:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      SourceDBInstanceIdentifier: !Ref 'MasterDB'
-      Tags:
-      - Key: Name
-        Value: Read Replica Database 
+      DistributionConfig:
+        Comment: 'Cloudfront Distribution pointing ALB Origin'
+        Origins:
+          - DomainName: !GetAtt EXALB.DNSName
+            Id: !Ref EXALB
+            CustomOriginConfig:              
+              HTTPSPort: '443'
+              OriginProtocolPolicy: https-only
+              OriginKeepaliveTimeout: 5
+              OriginReadTimeout: 30
+              OriginSSLProtocols: 
+                - TLSv1.2
+        Enabled: true
+        HttpVersion: 'http2'
+        PriceClass: PriceClass_All
+        DefaultCacheBehavior:        
+          AllowedMethods:
+            - GET
+            - HEAD
+            - DELETE
+            - OPTIONS
+            - PATCH
+            - POST
+            - PUT         
+          ForwardedValues: 
+            Cookies: 
+              Forward: all
+            Headers: 
+              - '*'
+            QueryString: true
+            QueryStringCacheKeys: 
+              - bno                
+          SmoothStreaming: 'false'
+          TargetOriginId: !Ref 'EXALB'
+          ViewerProtocolPolicy: allow-all
 
-      
 
