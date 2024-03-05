@@ -9,12 +9,12 @@ Parameters:
     Description: The IP address of the workstation that can SSH into the instance. 
   AMI:
     Type: String
-    Default: ami-020283e959651b381
+    Default: ami-052c9ea013e6e3567                        
     Description: Amazon Linux 2023 AMI
   Key:
     Type: String
     Description: The key used to access the instance. 
-    Default: project-key
+    Default: ec2-key
   DBInstanceID:
     Default: mydbinstance
     Description: My database instance
@@ -95,7 +95,7 @@ Resources:
   Subnet1:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: ap-northeast-1a
+      AvailabilityZone: us-west-2a
       VpcId: !Ref VPC
       CidrBlock: 216.0.10.0/24 
       MapPublicIpOnLaunch: true
@@ -105,7 +105,7 @@ Resources:
   Subnet2:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: ap-northeast-1a                     
+      AvailabilityZone: us-west-2a                     
       VpcId: !Ref VPC
       CidrBlock: 216.0.20.0/24 
       MapPublicIpOnLaunch: false
@@ -115,7 +115,7 @@ Resources:
   Subnet3:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: ap-northeast-1a                     
+      AvailabilityZone: us-west-2a                     
       VpcId: !Ref VPC
       CidrBlock: 216.0.30.0/24 
       MapPublicIpOnLaunch: false
@@ -125,7 +125,7 @@ Resources:
   Subnet4:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: ap-northeast-1a 
+      AvailabilityZone: us-west-2a 
       VpcId: !Ref VPC
       CidrBlock: 216.0.40.0/24 
       MapPublicIpOnLaunch: false
@@ -135,7 +135,7 @@ Resources:
   Subnet5:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: ap-northeast-1c                     
+      AvailabilityZone: us-west-2b                     
       VpcId: !Ref VPC
       CidrBlock: 216.0.110.0/24 
       MapPublicIpOnLaunch: true
@@ -145,7 +145,7 @@ Resources:
   Subnet6:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: ap-northeast-1c                     
+      AvailabilityZone: us-west-2b                     
       VpcId: !Ref VPC
       CidrBlock: 216.0.120.0/24 
       MapPublicIpOnLaunch: false
@@ -155,7 +155,7 @@ Resources:
   Subnet7:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: ap-northeast-1c                     
+      AvailabilityZone: us-west-2b                     
       VpcId: !Ref VPC
       CidrBlock: 216.0.130.0/24 
       MapPublicIpOnLaunch: false
@@ -165,7 +165,7 @@ Resources:
   Subnet8:
     Type: AWS::EC2::Subnet 
     Properties:
-      AvailabilityZone: ap-northeast-1c         
+      AvailabilityZone: us-west-2b         
       VpcId: !Ref VPC
       CidrBlock: 216.0.140.0/24 
       MapPublicIpOnLaunch: false
@@ -269,17 +269,17 @@ Resources:
         - IpProtocol: tcp
           FromPort: '80' 
           ToPort: '80' 
-          SourceSecurityGroupId: !Ref ExALBSG
+          SourceSecurityGroupId: !Ref EXALBSG
       SecurityGroupEgress: 
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
       Tags:
       - Key: Name
         Value: Web-SG
-  InNLBSG:
+  INALBSG:
     Type: AWS::EC2::SecurityGroup 
     Properties:
-      GroupName: "InNLBSG"
+      GroupName: "INALBSG"
       GroupDescription: "tomcat traffic in, all traffic out." 
       VpcId: !Ref VPC
       SecurityGroupIngress: 
@@ -307,7 +307,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: '8009' 
           ToPort: '8009' 
-          SourceSecurityGroupId: !Ref  InNLBSG
+          SourceSecurityGroupId: !Ref  INALBSG
       SecurityGroupEgress: 
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -331,7 +331,7 @@ Resources:
       Tags:
       - Key: Name
         Value: DB-SG
-  ExALBSG:
+  EXALBSG:
     Type: AWS::EC2::SecurityGroup 
     Properties:
       GroupName: "ExALBSG"
@@ -353,10 +353,10 @@ Resources:
     Type: AWS::EC2::EIP 
     Properties:
       Domain: VPC
-  EC2IAMRole1:
+  EC2IAMRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: s3-instance-role
+      RoleName: ec2-instance-role
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -367,12 +367,12 @@ Resources:
             Action:
               - sts:AssumeRole
       Path: /
-  RolePolicies1:
+  RolePolicies:
     Type: AWS::IAM::Policy
     DependsOn:
       - Linux1
     Properties:
-      PolicyName: InstancePolicy1
+      PolicyName: InstancePolicy
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -380,14 +380,14 @@ Resources:
             Action: 's3:*'
             Resource: '*'
       Roles:
-        - !Ref EC2IAMRole1
-  InstanceProfile1:
+        - !Ref EC2IAMRole
+  InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties: 
-      InstanceProfileName: InstanceProfile1
+      InstanceProfileName: InstanceProfile
       Path: "/"
       Roles: 
-        - !Ref EC2IAMRole1         
+        - !Ref EC2IAMRole         
   Linux1:
     Type: 'AWS::EC2::Instance' 
     Properties:
@@ -397,7 +397,7 @@ Resources:
       KeyName: !Ref Key
       SecurityGroupIds: 
         - Ref: PublicSG 
-      IamInstanceProfile: !Ref InstanceProfile1       
+      IamInstanceProfile: !Ref InstanceProfile        
       Tags:
         -
           Key: Appplication 
@@ -433,38 +433,52 @@ Resources:
           sudo hostnamectl set-hostname bastion.example.com
           sudo bash
           sudo dnf install -y httpd               
-          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/data/project-key.pem /root/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/data/ec2-key.pem /root/
           sudo systemctl enable --now httpd
-          sudo chmod 600 /root/project-key.pem          
-  LTWeb:
-    Type: 'AWS::EC2::LaunchTemplate'
+          sudo chmod 600 /root/ec2-key.pem          
+  LCWeb:
+    Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      LaunchTemplateName: WebTemplate
-      LaunchTemplateData:
-        IamInstanceProfile: 
-          - !Ref InstanceProfile1
-        KeyName: 
-          - !Ref Key                               
-        SecurityGroups:
-          - !Ref WebSG                
-      ImageId: 
-        - ami-09ca9a7f2b499c8cb
-      InstanceType: 
-        - !Ref InstanceTypeParameter
-# vim /etc/httpd/conf/workers.properties 에서 ExALB의 ip 주소 변경         
-  ExALB:
+      ImageId: ami-052c9ea013e6e3567  
+      InstanceType: t2.small
+      InstanceMonitoring: true
+      KeyName: !Ref Key
+      LaunchConfigurationName: webserverLC
+      IamInstanceProfile: !Ref InstanceProfile      
+      SecurityGroups:
+        - !Ref WebSG
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          sudo dnf install -y httpd
+          sudo rm -rf /etc/httpd/conf/httpd.conf
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/httpd.conf /root/etc/httpd/conf/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/web/workers.properties /root/etc/httpd/conf/
+          sudo wget https://dlcdn.apache.org/tomcat/tomcat-connectors/jk/tomcat-connectors-1.2.49-src.tar.gz
+          sudo dnf install -y autoconf libtool httpd-devel
+          sudo tar -xvzf tomcat-connectors-1.2.49-src.tar.gz
+          cd tomcat-connectors-1.2.49-src/native
+          sudo ./buildconf.sh
+          sudo ./configure --with-apxs=/usr/bin/apxs
+          sudo make && make install
+          sudo dnf install -y stress
+          sudo systemctl enable --now httpd
+          echo 'hello world' > /var/www/html/index.html        
+# 직접 입력, 특히, /etc/httpd/conf/workers.properties 에 ExALB ip host 작성하기
+  EXALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: webserverALB
       Type: application
       Scheme: internet-facing
       SecurityGroups:
-        - !Ref ExALBSG
+        - !Ref EXALBSG
       Subnets:
         - !Ref Subnet1
         - !Ref Subnet5
 
-  ExTargetGroup:
+  EXTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       VpcId: !Ref VPC
@@ -479,17 +493,17 @@ Resources:
       HealthyThresholdCount: 5
       UnhealthyThresholdCount: 2
 
-  ExALBListener:
+  EXALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref ExTargetGroup   
-      LoadBalancerArn: !Ref ExALB
+          TargetGroupArn: !Ref EXTargetGroup   
+      LoadBalancerArn: !Ref EXALB
       Port: 80
       Protocol: HTTP
 
-  ExASG:
+  EXASG:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       AutoScalingGroupName: webserverASG
@@ -497,39 +511,52 @@ Resources:
         - !Ref Subnet2
         - !Ref Subnet6
       Cooldown: 100
-      LaunchConfigurationName: !Ref LTWeb
+      LaunchConfigurationName: !Ref LCWeb
       MaxSize: 6
       MinSize: 2
       DesiredCapacity: 2
       TargetGroupARNs:
-        - !Ref ExTargetGroup
+        - !Ref EXTargetGroup
       Tags:
         - Key: Name
           Value: Web-asg
           PropagateAtLaunch: true
-  LTWas:
-    Type: 'AWS::EC2::LaunchTemplate'
+  LCWas:
+    Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      LaunchTemplateName: WasTemplate
-      LaunchTemplateData:
-        IamInstanceProfile: 
-          - !Ref InstanceProfile1
-        KeyName: 
-          - !Ref Key                               
-        SecurityGroups:
-          - !Ref WasSG                
-      ImageId: 
-        - ami-05c28dc79db6a0e56
-      InstanceType: 
-        - !Ref InstanceTypeParameter
-  InNLB:
+      ImageId: ami-052c9ea013e6e3567  
+      InstanceType: t2.small
+      InstanceMonitoring: true
+      KeyName: !Ref Key
+      LaunchConfigurationName: wasserverLC
+      IamInstanceProfile: !Ref InstanceProfile      
+      SecurityGroups:
+        - !Ref WasSG
+      UserData:
+        Fn::Base64: |
+          #cloud-boothook
+          #!/bin/bash
+          sudo dnf install java-1.8* -y
+          wget https://dlcdn.apache.org/tomcat/tomcat-8/v8.5.99/bin/apache-tomcat-8.5.99.tar.gz
+          tar xvfz apache-tomcat-8.5.99.tar.gz
+          sudo mv apache-tomcat-8.5.99 /usr/local/tomcat8.5
+          sudo rm -rf /usr/local/tomcat8.5/webapps/*
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/ROOT.war /root/usr/local/tomcat8.5/webapps/
+          sudo rm -rf /usr/local/tomcat8.5/conf/server.xml
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/server.xml /root/usr/local/tomcat8.5/conf/
+          sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-east-2/was/tomcat.service /root/usr/lib/systemd/system/
+          sudo systemctl daemon-reload
+          sudo systemctl enable tomcat
+          sudo systemctl start tomcat        
+# 직접 입력
+  INALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: wasserverNLB
+      Name: wasserverALB
       Type: network
       Scheme: internal
       SecurityGroups:
-        - !Ref InNLBSG
+        - !Ref INALBSG
       Subnets:
         - !Ref Subnet2
         - !Ref Subnet6
@@ -549,13 +576,13 @@ Resources:
       HealthyThresholdCount: 5
       UnhealthyThresholdCount: 2
 # HealthCheckProtocol은 TCP로 설정이 안되서 수동으로
-  InNLBListener:
+  INALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref INTargetGroup   
-      LoadBalancerArn: !Ref InNLB
+      LoadBalancerArn: !Ref INALB
       Port: 8009
       Protocol: TCP
 
@@ -567,7 +594,7 @@ Resources:
         - !Ref Subnet3
         - !Ref Subnet7
       Cooldown: 100
-      LaunchConfigurationName: !Ref LTWas
+      LaunchConfigurationName: !Ref LCWas
       MaxSize: 6
       MinSize: 2
       DesiredCapacity: 2
@@ -583,8 +610,8 @@ Resources:
       DistributionConfig:
         Comment: 'Cloudfront Distribution pointing ALB Origin'
         Origins:
-          - DomainName: !GetAtt ExALB.DNSName
-            Id: !Ref ExALB
+          - DomainName: !GetAtt EXALB.DNSName
+            Id: !Ref EXALB
             CustomOriginConfig:              
               HTTPSPort: '443'
               OriginProtocolPolicy: http-only
@@ -613,7 +640,7 @@ Resources:
             QueryStringCacheKeys: 
               - bno                
           SmoothStreaming: 'false'
-          TargetOriginId: !Ref 'ExALB'
+          TargetOriginId: !Ref 'EXALB'
           ViewerProtocolPolicy: allow-all
   MySNSTopic:
     Type: AWS::SNS::Topic
@@ -640,7 +667,7 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       Dimensions:
         - Name: InstanceId
-          Value: !Ref ExASG
+          Value: !Ref EXASG
   CPUUtilizationAlarmB:
     Type: AWS::CloudWatch::Alarm
     Properties:
