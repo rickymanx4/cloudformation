@@ -1,5 +1,8 @@
 AWSTemplateFormatVersion: 2010-09-09 
 Parameters:
+# 파라미터는 stack 생성할 때 기본적인 선택을 할 수도 있고 reference로 활용 가능
+# 대부분은 고정으로 했는데 AllowdPattern 을 사용해서 원하는 내용을 추가하면 stack 생성시 선택 가능
+# reference 하면 default로 선택됨
   InstanceTypeParameter: 
     Type: String 
     Default: t2.small
@@ -11,10 +14,14 @@ Parameters:
     Type: String
     Default: ami-052c9ea013e6e3567                        
     Description: Amazon Linux 2023 AMI
+# 본인의 region에 따라 ami가 다름    
   Key:
     Type: String
     Description: The key used to access the instance. 
     Default: ec2-key
+# 자신이 사용할 key 입력   
+
+# RDS 때문에 아래부분 작성
   DBInstanceID:
     Default: mydbinstance
     Description: My database instance
@@ -24,7 +31,7 @@ Parameters:
     AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
     ConstraintDescription: >-
       Must begin with a letter and must not end with a hyphen or contain two
-      consecutive hyphens.
+      consecutive hyphens.       
   DBName:
     Default: masterdb
     Description: My database
@@ -32,7 +39,7 @@ Parameters:
     MinLength: '1'
     MaxLength: '64'
     AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.    
   DBInstanceClass:
     Default: db.m5.large
     Description: DB instance class
@@ -53,6 +60,7 @@ Parameters:
     MaxLength: '16'
     AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
     ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+# stack 생성중에 DBusername 과 DBpassword를 요구하는데 RDS 접속을 위한 내용임    
   DBPassword:
     NoEcho: 'true'
     Description: Password MySQL database access
@@ -67,14 +75,19 @@ Parameters:
     Default: 'true'
     AllowedValues: ['true', 'false']
     ConstraintDescription: must be true or false. 
+# replica RDS 사용    
   MultiAZ:
     Description: Multi-AZ master database
     Type: String
     Default: 'true'
     AllowedValues: ['true', 'false']
     ConstraintDescription: must be true or false.
+# RDS MultiAZ 사용    
   
 Resources: 
+# 리소스는 우리가 사용하는 모든 것들을 생성
+# !Ref 와 !GetAtt를 주로 많이사용하는데 !Ref는 CloudFormation에서 작성한 resource들을 
+# 참조하는 것이고, !GetAtt는 cloudformation으로 생성된 resource 중에 필요한 정보를 참조하는 것임
   VPC:                                                   
     Type: AWS::EC2::VPC 
     Properties:
@@ -92,6 +105,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
+# internetgateway를 vpc에 attach 함      
   Subnet1:
     Type: AWS::EC2::Subnet 
     Properties:
@@ -193,6 +207,7 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0 
       GatewayId: !Ref InternetGateway
       RouteTableId: !Ref RouteTableA
+# internet gateway를 routing table에 설정      
   NATGateway:
    Type: AWS::EC2::NatGateway
    Properties:
@@ -208,6 +223,7 @@ Resources:
       RouteTableId: !Ref RouteTableB
       DestinationCidrBlock: '0.0.0.0/0'
       NatGatewayId: !Ref NATGateway
+# natgateway를 생성 후 routingtable에 설정      
   SubnetRouteTableAssociation1:
     Type: AWS::EC2::SubnetRouteTableAssociation 
     Properties:
@@ -238,6 +254,7 @@ Resources:
     Properties:
       RouteTableId: !Ref RouteTableB
       SubnetId: !Ref Subnet6
+# subnet을 routing table 에 설정      
   PublicSG:
     Type: AWS::EC2::SecurityGroup 
     Properties:
@@ -254,7 +271,7 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
       - Key: Name
-        Value: Public-bastion-SG
+        Value: Public-bastion-SG        
   WebSG:
     Type: AWS::EC2::SecurityGroup 
     Properties:
@@ -348,11 +365,11 @@ Resources:
       Tags:
       - Key: Name
         Value: External-ALB-SG
-        
+# 보안그룹은 인바운드 아웃바운드 다 수량 설정 가능        
   ElasticIP:
     Type: AWS::EC2::EIP 
     Properties:
-      Domain: VPC
+      Domain: VPC      
   EC2IAMRole:
     Type: AWS::IAM::Role
     Properties:
@@ -367,6 +384,7 @@ Resources:
             Action:
               - sts:AssumeRole
       Path: /
+# IAM Role 생성      
   RolePolicies:
     Type: AWS::IAM::Policy
     DependsOn:
@@ -381,13 +399,15 @@ Resources:
             Resource: '*'
       Roles:
         - !Ref EC2IAMRole
+# IAM Role의 권한(정책) 설정
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties: 
       InstanceProfileName: InstanceProfile
       Path: "/"
       Roles: 
-        - !Ref EC2IAMRole         
+        - !Ref EC2IAMRole   
+# 인스턴스에 IAM롤을 부여하기 위한 설정              
   Linux1:
     Type: 'AWS::EC2::Instance' 
     Properties:
@@ -436,6 +456,7 @@ Resources:
           sudo aws s3 cp s3://cf-templates-1x0jo9mn6dpu2-us-west-2/data/ec2-key.pem /root/
           sudo systemctl enable --now httpd
           sudo chmod 600 /root/ec2-key.pem          
+# bastion host instance 생성          
   LCWeb:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -465,7 +486,9 @@ Resources:
           sudo dnf install -y stress
           sudo systemctl enable --now httpd
           echo 'hello world' > /var/www/html/index.html        
-# 직접 입력, 특히, /etc/httpd/conf/workers.properties 에 ExALB ip host 작성하기
+# autoscaling으로 ec2 생성시 기본 설정          
+# userdata 오류 발생시 직접 입력, 특히, /etc/httpd/conf/workers.properties 에 ExALB ip host 작성하기
+
   EXALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -477,7 +500,7 @@ Resources:
       Subnets:
         - !Ref Subnet1
         - !Ref Subnet5
-
+# LoadBalancer 생성
   EXTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -492,7 +515,7 @@ Resources:
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 5
       UnhealthyThresholdCount: 2
-
+# Target group 생성
   EXALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -502,7 +525,7 @@ Resources:
       LoadBalancerArn: !Ref EXALB
       Port: 80
       Protocol: HTTP
-
+# listener 생성
   EXASG:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
@@ -521,6 +544,20 @@ Resources:
         - Key: Name
           Value: Web-asg
           PropagateAtLaunch: true
+# autoscaling group 생성
+# 아래 설정을 하면 autoscaling policy를 정할 수 있다.
+#  TargetTrackingScalingPolicy:
+#    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+#    Properties:
+#      PolicyName: cpu75-target-tracking-scaling-policy
+#      PolicyType: TargetTrackingScaling
+#      ScalingTargetId: !Ref ScalableTarget
+#      TargetTrackingScalingPolicyConfiguration:
+ #       TargetValue: 75.0
+ #       ScaleInCooldown: 60
+ #       ScaleOutCooldown: 60
+ #       PredefinedMetricSpecification:
+ #         PredefinedMetricType: ECSServiceAverageCPUUtilization          
   LCWas:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -548,7 +585,7 @@ Resources:
           sudo systemctl daemon-reload
           sudo systemctl enable tomcat
           sudo systemctl start tomcat        
-# 직접 입력
+# # userdata 오류 발생시 직접 입력
   INALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -575,7 +612,7 @@ Resources:
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 5
       UnhealthyThresholdCount: 2
-# HealthCheckProtocol은 TCP로 설정이 안되서 수동으로
+# HealthCheckProtocol은 TCP로 설정이 안되서 AWS에서 수동 설정
   INALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -642,6 +679,7 @@ Resources:
           SmoothStreaming: 'false'
           TargetOriginId: !Ref 'EXALB'
           ViewerProtocolPolicy: allow-all
+# CloudFront 설정          
   MySNSTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -649,6 +687,7 @@ Resources:
       Subscription:
         - Endpoint: rickymanx4@naver.com
           Protocol: email
+# SNS 설정          
   CPUUtilizationAlarmA:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -667,7 +706,7 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       Dimensions:
         - Name: InstanceId
-          Value: !Ref EXASG
+          Value: !Ref EXASG          
   CPUUtilizationAlarmB:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -686,7 +725,8 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       Dimensions:
         - Name: InstanceId
-          Value: !Ref INASG          
+          Value: !Ref INASG 
+# cloudwatch 설정                   
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
@@ -696,7 +736,8 @@ Resources:
       - !Ref Subnet8
       Tags:
       - Key: Name
-        Value: DatabaseSubnet            
+        Value: DatabaseSubnet 
+# RDS를 위한 subnet                   
   MasterDB:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -716,6 +757,7 @@ Resources:
       VPCSecurityGroups: 
       - !Ref DBSG
       PubliclyAccessible: false   
+# RDS instance(primary)      
   ReplicaDB:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -723,3 +765,4 @@ Resources:
       Tags:
       - Key: Name
         Value: Read Replica Database 
+# RDS Replica        
