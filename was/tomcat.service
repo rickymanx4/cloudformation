@@ -1,0 +1,21 @@
+[Unit]
+Description=tomcat 8.5
+After=network.target syslog.target
+
+[Service]
+Type=forking
+
+User=root
+Group=root
+
+# 실행 파일 경로
+ExecStart=/usr/local/tomcat8.5/bin/startup.sh
+
+# 중지 파일 경로
+ExecStop=/usr/local/tomcat8.5/bin/shutdown.sh
+
+# 디렉토리 권한 770 && 새로운 파일 권한 660
+UMask=0007
+
+[Install]
+WantedBy=multi-user.target
